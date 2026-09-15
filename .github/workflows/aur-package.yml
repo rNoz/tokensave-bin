@@ -1,0 +1,91 @@
+name: Validate AUR package
+
+on:
+  push:
+    paths:
+      - '.github/workflows/aur-package.yml'
+      - '.SRCINFO'
+      - 'PKGBUILD'
+      - 'README.md'
+      - 'LICENSE'
+      - 'docs/**'
+  pull_request:
+    paths:
+      - '.github/workflows/aur-package.yml'
+      - '.SRCINFO'
+      - 'PKGBUILD'
+      - 'README.md'
+      - 'LICENSE'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build and smoke-test package
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel@sha256:307b7161a9ad33b180f6a24532c9c05841012d129acc0ceafa8b9c7234b62148
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install package validation tools
+        run: |
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm namcap shadow
+          useradd --create-home --user-group builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Validate shell syntax and generated metadata
+        run: |
+          runuser -u builder -- bash -c 'bash -n PKGBUILD'
+          runuser -u builder -- bash -c \
+            'makepkg --printsrcinfo | diff -u .SRCINFO -'
+
+      - name: Verify sources and build package
+        run: |
+          runuser -u builder -- makepkg --verifysource --force
+          runuser -u builder -- makepkg --cleanbuild --clean --force
+
+      - name: Inspect package without installation
+        run: |
+          runuser -u builder -- bash -s <<'EOF'
+          set -e
+          package_glob='tokensave-bin-*.pkg.tar.*'
+          binary_path='usr/bin/tokensave'
+          license_path='usr/share/licenses/tokensave-bin/LICENSE'
+          pkgfile=$(find . -maxdepth 1 -type f -name "$package_glob" -print -quit)
+          test -n "$pkgfile"
+          namcap PKGBUILD "$pkgfile"
+          bsdtar -tf "$pkgfile" | grep -Fx "$binary_path"
+          bsdtar -tf "$pkgfile" | grep -Fx "$license_path"
+          pacman -Qp --info "$pkgfile"
+          EOF
+
+      - name: Smoke-test upstream executable on trusted events
+        if: github.event_name != 'pull_request'
+        run: |
+          runuser -u builder -- bash -s <<'EOF'
+          set -e
+          package_glob='tokensave-bin-*.pkg.tar.*'
+          pkgfile=$(find . -maxdepth 1 -type f -name "$package_glob" -print -quit)
+          root=$(mktemp -d)
+          trap 'rm -rf "$root"' EXIT
+          bsdtar -xf "$pkgfile" -C "$root"
+          "$root/usr/bin/tokensave" --version | grep -Fx 'tokensave 7.12.1'
+          "$root/usr/bin/tokensave" --help >/dev/null
+          EOF
+
+      - name: Upload package metadata
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tokensave-bin-metadata
+          path: |
+            PKGBUILD
+            .SRCINFO
+          if-no-files-found: error

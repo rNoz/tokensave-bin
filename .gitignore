@@ -1,0 +1,21 @@
+# makepkg output and working directories
+/pkg/
+/src/
+*.pkg.tar.*
+*.src.tar.*
+
+# Downloaded sources and checksum files
+*.tar.gz
+tokensave-license-*
+*.sha256
+
+# Local build and test files
+*.log
+
+# Local credentials, agent state, and planning artifacts
+.env
+.env.*
+!.env.example
+.overlay/
+.tokensave/
+docs/superpowers/
