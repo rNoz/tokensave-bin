@@ -9,6 +9,8 @@ on:
       - 'README.md'
       - 'LICENSE'
       - 'docs/**'
+      - 'scripts/**'
+      - 'tests/**'
   pull_request:
     paths:
       - '.github/workflows/aur-package.yml'
@@ -17,6 +19,8 @@ on:
       - 'README.md'
       - 'LICENSE'
       - 'docs/**'
+      - 'scripts/**'
+      - 'tests/**'
   workflow_dispatch:
 
 permissions:
@@ -46,6 +50,7 @@ jobs:
           runuser -u builder -- bash -c 'bash -n PKGBUILD'
           runuser -u builder -- bash -c \
             'makepkg --printsrcinfo | diff -u .SRCINFO -'
+          runuser -u builder -- python3 -m unittest discover -s tests -v
 
       - name: Verify sources and build package
         run: |
@@ -77,7 +82,8 @@ jobs:
           root=$(mktemp -d)
           trap 'rm -rf "$root"' EXIT
           bsdtar -xf "$pkgfile" -C "$root"
-          "$root/usr/bin/tokensave" --version | grep -Fx 'tokensave 7.12.1'
+          expected_version=$(sed -n 's/^pkgver=//p' PKGBUILD)
+          "$root/usr/bin/tokensave" --version | grep -Fx "tokensave $expected_version"
           "$root/usr/bin/tokensave" --help >/dev/null
           EOF
 

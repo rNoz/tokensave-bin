@@ -8,8 +8,11 @@ Reproducible Arch Linux package metadata for the prebuilt **TokenSave** command-
 ## Upstream
 
 - Repository: <https://github.com/aovestdipaperino/tokensave>
+<!-- release-metadata:start -->
 - Packaged release: `v7.12.1`
 - Release archive: `tokensave-v7.12.1-x86_64-linux.tar.gz`
+- Upstream release: <https://github.com/aovestdipaperino/tokensave/releases/tag/v7.12.1>
+<!-- release-metadata:end -->
 - Installed command: `/usr/bin/tokensave`
 - Maintainer: `rNoz <maintainers@users.noreply.github.com>`
 
@@ -33,9 +36,11 @@ makepkg -si
 
 Install an already-built package directly:
 
+<!-- package-file:start -->
 ```bash
 sudo pacman -U tokensave-bin-7.12.1-1-x86_64.pkg.tar.zst
 ```
+<!-- package-file:end -->
 
 ## Local verification
 
@@ -44,7 +49,8 @@ The package can be built without installing it:
 ```bash
 makepkg --verifysource --force
 makepkg --cleanbuild --clean --force
-namcap PKGBUILD tokensave-bin-7.12.1-1-x86_64.pkg.tar.zst
+pkgfile=$(find . -maxdepth 1 -type f -name 'tokensave-bin-*.pkg.tar.*' -print -quit)
+namcap PKGBUILD "$pkgfile"
 ```
 
 The package contents are intentionally small:

@@ -11,6 +11,8 @@ tokensave-license-*
 
 # Local build and test files
 *.log
+__pycache__/
+*.py[cod]
 
 # Local credentials, agent state, and planning artifacts
 .env

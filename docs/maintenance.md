@@ -1,6 +1,6 @@
 # Maintenance
 
-## Updating the packaged release
+## Updating the packaged release manually
 
 1. Check the upstream TokenSave releases at <https://github.com/aovestdipaperino/tokensave/releases>.
 2. Set `pkgver` in `PKGBUILD` to the release number without the leading `v`.
@@ -14,6 +14,32 @@
    ```
 
 Do not replace fixed release URLs with a moving `latest` URL, and do not add source compilation unless the upstream binary is unavailable or unusable.
+
+## Automated release updates
+
+The `update-release.yml` workflow checks the latest stable upstream release hourly and also accepts a
+`repository_dispatch` event of type `tokensave-release-published`. It validates the release archive,
+the upstream `SHA256SUMS` asset, and the tagged MIT license before updating:
+
+- `PKGBUILD` version and checksums;
+- generated `.SRCINFO`;
+- the marked current-release and package-file sections in `README.md`; and
+- `docs/releases/vX.Y.Z.md` with the upstream release notes and source link.
+
+The workflow opens a pull request instead of committing directly to the default branch. Package validation
+runs on that pull request, so a maintainer reviews the complete metadata change before merging it.
+
+GitHub cannot deliver a release event from the unrelated upstream repository directly to this repository.
+The scheduled check is therefore the self-contained fallback. An upstream workflow or GitHub App can
+remove the polling delay by calling this repository's `repository_dispatch` endpoint with a
+`tokensave-release-published` event and a `tag` payload such as `v7.13.0`.
+
+To replay a specific release manually:
+
+```bash
+python3 scripts/update_release.py --tag v7.13.0
+makepkg --printsrcinfo > .SRCINFO
+```
 
 ## Required local checks
 
