@@ -2,7 +2,7 @@
 
 [![Package CI](https://github.com/rNoz/tokensave-bin/actions/workflows/aur-package.yml/badge.svg)](https://github.com/rNoz/tokensave-bin/actions/workflows/aur-package.yml)
 [![Release automation](https://github.com/rNoz/tokensave-bin/actions/workflows/publish-release.yml/badge.svg)](https://github.com/rNoz/tokensave-bin/actions/workflows/publish-release.yml)
-[![AUR package](https://img.shields.io/aur/version/tokensave-bin?logo=archlinux)](https://aur.archlinux.org/packages/tokensave-bin)
+[![AUR package](https://img.shields.io/aur/version/tokensave-bin.svg?logo=archlinux)](https://aur.archlinux.org/packages/tokensave-bin)
 
 Reproducible Arch Linux package metadata for the prebuilt **TokenSave** command-line tool. The package reuses the upstream x86_64 Linux release rather than compiling Rust source code.
 
