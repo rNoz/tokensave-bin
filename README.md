@@ -6,18 +6,21 @@
 
 Reproducible Arch Linux package metadata for the prebuilt **TokenSave** command-line tool. The package reuses the upstream x86_64 Linux release rather than compiling Rust source code.
 
-## Upstream
+## Package
 
-- Repository: <https://github.com/aovestdipaperino/tokensave>
 <!-- release-metadata:start -->
 - Packaged release: `v7.12.1`
 - Release archive: `tokensave-v7.12.1-x86_64-linux.tar.gz`
 - Upstream release: <https://github.com/aovestdipaperino/tokensave/releases/tag/v7.12.1>
 <!-- release-metadata:end -->
 - Installed command: `/usr/bin/tokensave`
-- Maintainer: `rNoz <maintainers@users.noreply.github.com>`
 
 The release archive and matching upstream MIT license are pinned by SHA-256 in `PKGBUILD`. Runtime dependencies are `glibc` and `libgcc`.
+
+## Upstream
+
+TokenSave is maintained at <https://github.com/aovestdipaperino/tokensave>. This repository packages
+its prebuilt x86_64 Linux release without compiling or modifying the upstream executable.
 
 ## Installation
 

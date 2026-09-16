@@ -8,7 +8,6 @@ from scripts.update_release import (
     parse_sha256sums,
     render_readme_metadata,
     render_package_command,
-    render_release_notes,
     validate_mit_license,
     validate_release_archive,
     update_pkgbuild_text,
@@ -111,17 +110,6 @@ sudo pacman -U tokensave-bin-7.13.0-1-x86_64.pkg.tar.zst
 ```
 <!-- package-file:end -->""",
         )
-
-    def test_render_release_notes_preserves_upstream_body_with_provenance(self):
-        rendered = render_release_notes(
-            version="7.13.0",
-            release_url="https://github.com/aovestdipaperino/tokensave/releases/tag/v7.13.0",
-            body="Fixed indexing.",
-        )
-
-        self.assertIn("# TokenSave v7.13.0", rendered)
-        self.assertIn("Source release: <https://github.com/aovestdipaperino/tokensave/releases/tag/v7.13.0>", rendered)
-        self.assertIn("Fixed indexing.", rendered)
 
     def test_validate_mit_license_requires_mit_grant_text(self):
         validate_mit_license(

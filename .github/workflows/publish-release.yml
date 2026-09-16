@@ -79,9 +79,29 @@ jobs:
           set -eu
           release_tag="v${PACKAGE_VERSION}"
           release_asset="tokensave-bin-${PACKAGE_VERSION}.src.tar.gz"
-          release_notes="docs/releases/v${VERSION}.md"
-          test -f "$release_notes"
-          tar -czf "$release_asset" PKGBUILD .SRCINFO LICENSE README.md "$release_notes"
+          release_json=$(mktemp)
+          release_notes=$(mktemp)
+          trap 'rm -f "$release_asset" "$release_json" "$release_notes"' EXIT
+          gh api "repos/aovestdipaperino/tokensave/releases/tags/v${VERSION}" > "$release_json"
+          python3 - "$release_json" "$release_notes" "$VERSION" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          release_path, notes_path, version = sys.argv[1:]
+          release = json.loads(Path(release_path).read_text(encoding="utf-8"))
+          if release.get("draft") or release.get("prerelease"):
+              raise SystemExit("upstream release is not stable and published")
+          if release.get("tag_name") != f"v{version}":
+              raise SystemExit("upstream release tag does not match package version")
+          url = release.get("html_url") or f"https://github.com/aovestdipaperino/tokensave/releases/tag/v{version}"
+          body = (release.get("body") or "").strip() or "No upstream release notes were provided."
+          Path(notes_path).write_text(
+              f"# TokenSave v{version}\n\nSource release: <{url}>\n\n{body}\n",
+              encoding="utf-8",
+          )
+          PY
+          tar -czf "$release_asset" PKGBUILD .SRCINFO LICENSE README.md
 
           if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$release_tag" \

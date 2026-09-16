@@ -14,11 +14,9 @@ tokensave-license-*
 __pycache__/
 *.py[cod]
 
-# Local credentials, agent state, and planning artifacts
+# Local credentials and tool state
 .env
 .env.*
 !.env.example
 .private/
-.overlay/
 .tokensave/
-docs/superpowers/

@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Stable upstream tag to replay, for example v7.13.0'
+        description: 'Newer stable upstream tag to prepare, for example v7.13.0'
         required: false
         type: string
 
@@ -76,7 +76,7 @@ jobs:
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           git diff --check
-          if [ -z "$(git status --porcelain -- PKGBUILD .SRCINFO README.md docs/releases)" ]; then
+          if [ -z "$(git status --porcelain -- PKGBUILD .SRCINFO README.md)" ]; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
           else
             echo 'changed=true' >> "$GITHUB_OUTPUT"
@@ -86,6 +86,7 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          RELEASE_TOKEN_CONFIGURED: ${{ secrets.RELEASE_TOKEN != '' }}
           VERSION: ${{ steps.changes.outputs.version }}
         run: |
           set -eu
@@ -98,7 +99,7 @@ jobs:
             git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
           fi
           git checkout -B "$branch"
-          git add PKGBUILD .SRCINFO README.md "docs/releases/v${VERSION}.md"
+          git add PKGBUILD .SRCINFO README.md
           git commit -m "chore: prepare tokensave v${VERSION}"
           if [ -n "$expected_sha" ]; then
             git push --force-with-lease="refs/heads/$branch:$expected_sha" origin "$branch"
@@ -116,10 +117,12 @@ jobs:
               --body "$(printf '%s\n\n%s\n\n%s\n' \
                 'Automated upstream release update.' \
                 '- PKGBUILD checksums were derived from the upstream SHA256SUMS asset.' \
-                '- README metadata, generated .SRCINFO, and upstream release notes were updated.')")
+                '- README metadata and generated .SRCINFO were updated.')")
           else
             printf 'Updated existing pull request: %s\n' "$existing"
           fi
-          if ! gh workflow run aur-package.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"; then
+          if [ "$RELEASE_TOKEN_CONFIGURED" = "true" ]; then
+            echo "::notice::Package validation will run from the release-token branch push."
+          elif ! gh workflow run aur-package.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"; then
             echo "::warning::Could not dispatch package validation for $branch; the pull request remains open for manual validation."
           fi

@@ -130,10 +130,6 @@ def release_from_github(tag: str | None = None) -> dict[str, str]:
     release_url = release.get("html_url")
     if not isinstance(release_url, str):
         release_url = f"https://github.com/{UPSTREAM_REPOSITORY}/releases/tag/{tag_name}"
-    body = release.get("body")
-    if not isinstance(body, str):
-        body = ""
-
     return {
         "version": version,
         "tag": tag_name,
@@ -142,7 +138,6 @@ def release_from_github(tag: str | None = None) -> dict[str, str]:
         "archive_sha256": archive_sha256,
         "license_sha256": license_sha256,
         "release_url": release_url,
-        "body": body,
     }
 
 
@@ -208,20 +203,6 @@ def render_package_command(*, version: str) -> str:
     )
 
 
-def render_release_notes(*, version: str, release_url: str, body: str) -> str:
-    notes = body.strip() or "No upstream release notes were provided."
-    return "\n".join(
-        [
-            f"# TokenSave v{version}",
-            "",
-            f"Source release: <{release_url}>",
-            "",
-            notes,
-            "",
-        ]
-    )
-
-
 def replace_marked_block(contents: str, start: str, end: str, replacement: str) -> str:
     pattern = re.compile(
         rf"(?ms)^{re.escape(start)}\n.*?^{re.escape(end)}$"
@@ -275,16 +256,6 @@ def update_repository(root: Path, release: dict[str, str]) -> bool:
     )
     readme_path.write_text(readme, encoding="utf-8")
 
-    release_notes_path = root / "docs" / "releases" / f"v{release['version']}.md"
-    release_notes_path.parent.mkdir(parents=True, exist_ok=True)
-    release_notes_path.write_text(
-        render_release_notes(
-            version=release["version"],
-            release_url=release["release_url"],
-            body=release["body"],
-        ),
-        encoding="utf-8",
-    )
     return True
 
 
