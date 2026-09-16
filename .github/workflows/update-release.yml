@@ -49,6 +49,7 @@ jobs:
           MANUAL_TAG: ${{ inputs.tag }}
         run: |
           set -eu
+          cd "$GITHUB_WORKSPACE"
           tag="${DISPATCH_TAG:-${MANUAL_TAG:-}}"
           if [ -n "$tag" ]; then
             runuser -u builder -- env GITHUB_TOKEN="$GITHUB_TOKEN" \
@@ -63,6 +64,7 @@ jobs:
         id: changes
         run: |
           set -eu
+          cd "$GITHUB_WORKSPACE"
           version=$(sed -n 's/^pkgver=//p' PKGBUILD)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -80,6 +82,7 @@ jobs:
           VERSION: ${{ steps.changes.outputs.version }}
         run: |
           set -eu
+          cd "$GITHUB_WORKSPACE"
           branch="automation/tokensave-v${VERSION}"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
