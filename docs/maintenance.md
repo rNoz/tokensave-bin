@@ -54,7 +54,7 @@ project-specific patching or test tasks:
   `automation/tokensave-vX.Y.Z` pull request;
 - AUR publication is optional and is skipped until `AUR_SSH_KEY` is configured;
 - when enabled, the workflow publishes only `PKGBUILD` and `.SRCINFO` to the existing `tokensave-bin`
-  AUR package and verifies the pinned AUR host keys.
+  AUR package, or initializes the first package submission, and verifies the pinned AUR host keys.
 
 Configure these repository secrets only through GitHub's secret storage:
 
@@ -66,8 +66,8 @@ Configure these repository secrets only through GitHub's secret storage:
 | `AUR_EMAIL` | AUR commit author email, required with `AUR_SSH_KEY`. |
 | `AUR_PKG_NAME` | Repository variable for the AUR package name; defaults to `tokensave-bin`. |
 
-The AUR private key is never stored in this repository or printed by CI. The AUR package must already
-exist before enabling publication.
+The AUR private key is never stored in this repository or printed by CI. The first publication creates
+the package repository; later publications clone and update it.
 
 ## Required local checks
 

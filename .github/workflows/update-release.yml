@@ -14,6 +14,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -92,15 +93,22 @@ jobs:
           branch="automation/tokensave-v${VERSION}"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          expected_sha=$(git ls-remote origin "refs/heads/$branch" | awk '{print $1}')
+          if [ -n "$expected_sha" ]; then
+            git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+          fi
           git checkout -B "$branch"
           git add PKGBUILD .SRCINFO README.md "docs/releases/v${VERSION}.md"
           git commit -m "chore: prepare tokensave v${VERSION}"
-          git push --force-with-lease origin "$branch"
-          gh workflow run aur-package.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          if [ -n "$expected_sha" ]; then
+            git push --force-with-lease="refs/heads/$branch:$expected_sha" origin "$branch"
+          else
+            git push --force-with-lease="refs/heads/$branch:" origin "$branch"
+          fi
 
           existing=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --head "$branch" --json url --jq '.[0].url')
           if [ -z "$existing" ]; then
-            gh pr create \
+            existing=$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
               --base "${{ github.event.repository.default_branch }}" \
               --head "$branch" \
@@ -108,7 +116,10 @@ jobs:
               --body "$(printf '%s\n\n%s\n\n%s\n' \
                 'Automated upstream release update.' \
                 '- PKGBUILD checksums were derived from the upstream SHA256SUMS asset.' \
-                '- README metadata, generated .SRCINFO, and upstream release notes were updated.')"
+                '- README metadata, generated .SRCINFO, and upstream release notes were updated.')")
           else
             printf 'Updated existing pull request: %s\n' "$existing"
+          fi
+          if ! gh workflow run aur-package.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"; then
+            echo "::warning::Could not dispatch package validation for $branch; the pull request remains open for manual validation."
           fi

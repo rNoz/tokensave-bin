@@ -1,6 +1,9 @@
+import os
 import unittest
+from unittest.mock import patch
 
 from scripts.update_release import (
+    fetch_bytes,
     is_newer_version,
     parse_sha256sums,
     render_readme_metadata,
@@ -13,6 +16,29 @@ from scripts.update_release import (
 
 
 class UpdateReleaseTests(unittest.TestCase):
+    def test_fetch_bytes_uses_github_token_only_for_github_api_requests(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def read(self):
+                return b"response"
+
+        with (
+            patch.dict(os.environ, {"GITHUB_TOKEN": "test-token"}, clear=False),
+            patch("scripts.update_release.urlopen", return_value=Response()) as urlopen,
+        ):
+            self.assertEqual(
+                fetch_bytes("https://api.github.com/repos/example/project"),
+                b"response",
+            )
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
+
     def test_parse_sha256sums_selects_the_named_archive(self):
         sums = """\
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  tokensave-v7.12.1-aarch64-linux.tar.gz

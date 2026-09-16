@@ -117,15 +117,16 @@ jobs:
             echo "::error::AUR_USERNAME and AUR_EMAIL are required when AUR_SSH_KEY is configured."
             exit 1
           fi
+          if ! printf '%s\n' "$AUR_PKG_NAME" | grep -Eq '^[a-z0-9][a-z0-9@._+-]*$'; then
+            echo "::error::AUR_PKG_NAME contains invalid characters."
+            exit 1
+          fi
 
           payload=$(curl --fail --silent --show-error --retry 3 \
             "https://aur.archlinux.org/rpc/v5/info/${AUR_PKG_NAME}")
-          if ! python3 -c \
-            'import json, sys; raise SystemExit(0 if json.load(sys.stdin).get("resultcount") == 1 else 1)' \
-            <<<"$payload"; then
-            echo "::error::AUR package ${AUR_PKG_NAME} does not exist; create it before enabling publication."
-            exit 1
-          fi
+          aur_exists=$(python3 -c \
+            'import json, sys; print("true" if json.load(sys.stdin).get("resultcount") == 1 else "false")' \
+            <<<"$payload")
 
           mkdir -p "$HOME/.ssh"
           key_file=$(mktemp "$HOME/.ssh/aur-key.XXXXXX")
@@ -138,7 +139,13 @@ jobs:
           } >> "$HOME/.ssh/known_hosts"
 
           export GIT_SSH_COMMAND="ssh -i $key_file -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
-          git clone "ssh://aur@aur.archlinux.org/${AUR_PKG_NAME}.git" /tmp/aur-repo
+          if [ "$aur_exists" = "true" ]; then
+            git clone "ssh://aur@aur.archlinux.org/${AUR_PKG_NAME}.git" /tmp/aur-repo
+          else
+            mkdir /tmp/aur-repo
+            git -C /tmp/aur-repo init --initial-branch=master
+            git -C /tmp/aur-repo remote add origin "ssh://aur@aur.archlinux.org/${AUR_PKG_NAME}.git"
+          fi
           cp PKGBUILD .SRCINFO /tmp/aur-repo/
           git -C /tmp/aur-repo config user.name "$AUR_USERNAME"
           git -C /tmp/aur-repo config user.email "$AUR_EMAIL"
