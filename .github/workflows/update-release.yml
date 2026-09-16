@@ -54,14 +54,17 @@ jobs:
       - name: Generate .SRCINFO in Arch Linux
         run: |
           docker run --rm \
-            -v "$GITHUB_WORKSPACE:/workspace" \
-            -w /workspace \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
             archlinux:base-devel@sha256:307b7161a9ad33b180f6a24532c9c05841012d129acc0ceafa8b9c7234b62148 \
             bash -euc '
-              pacman -Sy --noconfirm archlinux-keyring shadow
+              pacman -Sy --noconfirm archlinux-keyring shadow >&2
               useradd --create-home --user-group builder
-              runuser -u builder -- makepkg --printsrcinfo > .SRCINFO
-            '
+              mkdir /tmp/package
+              cp /workspace/PKGBUILD /tmp/package/PKGBUILD
+              chown -R builder:builder /tmp/package
+              cd /tmp/package
+              runuser -u builder -- makepkg --printsrcinfo
+            ' > "$GITHUB_WORKSPACE/.SRCINFO"
 
       - name: Check generated changes
         id: changes
