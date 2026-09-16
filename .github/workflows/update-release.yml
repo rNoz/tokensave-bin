@@ -2,7 +2,9 @@ name: Update upstream release
 
 on:
   schedule:
-    - cron: '17 * * * *'
+    # Three checks per day (08:17, 14:17, 20:17 UTC), covering the observed
+    # upstream release windows (mostly 07:00-17:00 UTC, occasional evenings).
+    - cron: '17 8,14,20 * * *'
   repository_dispatch:
     types:
       - tokensave-release-published
@@ -34,7 +36,32 @@ jobs:
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
           persist-credentials: true
 
+      - name: Check for upstream changes
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          DISPATCH_TAG: ${{ github.event.client_payload.tag }}
+          MANUAL_TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE"
+          if [ -n "${DISPATCH_TAG:-${MANUAL_TAG:-}}" ] || [ "$EVENT_NAME" != "schedule" ]; then
+            echo 'should_update=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          latest=$(gh api repos/aovestdipaperino/tokensave/releases/latest --jq .tag_name)
+          current="v$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          echo "Upstream latest: $latest; packaged: $current"
+          if [ "$latest" = "$current" ]; then
+            echo 'No upstream change; skipping update.'
+            echo 'should_update=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'should_update=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Update release metadata
+        if: steps.upstream.outputs.should_update == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
@@ -53,6 +80,7 @@ jobs:
           fi
 
       - name: Generate .SRCINFO in Arch Linux
+        if: steps.upstream.outputs.should_update == 'true'
         run: |
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/workspace:ro" \
@@ -69,6 +97,7 @@ jobs:
 
       - name: Check generated changes
         id: changes
+        if: steps.upstream.outputs.should_update == 'true'
         run: |
           set -eu
           cd "$GITHUB_WORKSPACE"
@@ -83,7 +112,7 @@ jobs:
           fi
 
       - name: Create or update release pull request
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.upstream.outputs.should_update == 'true' && steps.changes.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           RELEASE_TOKEN_CONFIGURED: ${{ secrets.RELEASE_TOKEN != '' }}
@@ -111,7 +140,7 @@ jobs:
           if [ -z "$existing" ]; then
             existing=$(gh pr create \
               --repo "$GITHUB_REPOSITORY" \
-              --base "${{ github.event.repository.default_branch }}" \
+              --base "${{ github.event.repository.default_branch || github.ref_name }}" \
               --head "$branch" \
               --title "chore: prepare tokensave v${VERSION}" \
               --body "$(printf '%s\n\n%s\n\n%s\n' \

@@ -72,6 +72,19 @@ def parse_sha256sums(contents: str, filename: str) -> str:
     raise ValueError(f"no SHA-256 checksum found for {filename}")
 
 
+def validate_asset_digest(
+    asset_digests: dict[str, str], filename: str, sha256: str
+) -> None:
+    digest = asset_digests.get(filename)
+    if not isinstance(digest, str) or not digest.startswith("sha256:"):
+        raise ValueError(f"release asset {filename} has no reported SHA-256 digest")
+    reported = digest.removeprefix("sha256:").lower()
+    if reported != sha256:
+        raise ValueError(
+            f"release asset {filename} digest {reported} does not match SHA256SUMS {sha256}"
+        )
+
+
 def validate_mit_license(contents: bytes) -> None:
     required_text = (
         b"MIT License",
@@ -116,12 +129,16 @@ def release_from_github(tag: str | None = None) -> dict[str, str]:
         raise RuntimeError("upstream release has no assets")
 
     asset_urls: dict[str, str] = {}
+    asset_digests: dict[str, str] = {}
     for asset in assets:
         if isinstance(asset, dict):
             name = asset.get("name")
             download_url = asset.get("browser_download_url")
             if isinstance(name, str) and isinstance(download_url, str):
                 asset_urls[name] = download_url
+                digest = asset.get("digest")
+                if isinstance(digest, str):
+                    asset_digests[name] = digest
     archive_url_x86_64 = asset_urls.get(expected_archive_x86_64)
     archive_url_aarch64 = asset_urls.get(expected_archive_aarch64)
     sums_url = asset_urls.get("SHA256SUMS")
@@ -133,6 +150,8 @@ def release_from_github(tag: str | None = None) -> dict[str, str]:
     sums_text = fetch_bytes(sums_url).decode("utf-8")
     archive_sha256_x86_64 = parse_sha256sums(sums_text, expected_archive_x86_64)
     archive_sha256_aarch64 = parse_sha256sums(sums_text, expected_archive_aarch64)
+    validate_asset_digest(asset_digests, expected_archive_x86_64, archive_sha256_x86_64)
+    validate_asset_digest(asset_digests, expected_archive_aarch64, archive_sha256_aarch64)
     license_url = f"https://raw.githubusercontent.com/{UPSTREAM_REPOSITORY}/{tag_name}/LICENSE"
     license_contents = fetch_bytes(license_url)
     validate_mit_license(license_contents)

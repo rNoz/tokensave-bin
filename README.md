@@ -1,11 +1,17 @@
-# tokensave-bin
+# tokensave (AUR package)
+
+<div align="center">
+
+> Automated packaging for tokensave (Semantic Code Intelligence for AI Coding Agents) as tokensave-bin AUR package (x86_64, aarch64)
 
 [![Package CI](https://github.com/rNoz/tokensave-bin/actions/workflows/aur-package.yml/badge.svg)](https://github.com/rNoz/tokensave-bin/actions/workflows/aur-package.yml)
-[![Release automation](https://github.com/rNoz/tokensave-bin/actions/workflows/publish-release.yml/badge.svg)](https://github.com/rNoz/tokensave-bin/actions/workflows/publish-release.yml)
-[![AUR package](https://img.shields.io/aur/version/tokensave-bin.svg?logo=archlinux)](https://aur.archlinux.org/packages/tokensave-bin)
+[![AUR version](https://img.shields.io/aur/version/tokensave-bin.svg?logo=archlinux)](https://aur.archlinux.org/packages/tokensave-bin)
+[![Security audit: aurscan](https://img.shields.io/badge/security%20audit-aurscan-informational?logo=shield&logoColor=white)](https://github.com/rNoz/tokensave-bin/actions/workflows/aur-package.yml)
 [![Upstream release](https://img.shields.io/github/v/release/aovestdipaperino/tokensave?label=upstream%20release)](https://github.com/aovestdipaperino/tokensave/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20%2B%20MIT-blue.svg)](LICENSE)
 [![Arch](https://img.shields.io/badge/arch-x86__64%20%7C%20aarch64-informational)](#installation)
+
+</div>
 
 Reproducible Arch Linux package metadata for the prebuilt **TokenSave** command-line tool. The package reuses the upstream x86_64 and aarch64 Linux releases rather than compiling Rust source code.
 
@@ -18,7 +24,7 @@ Reproducible Arch Linux package metadata for the prebuilt **TokenSave** command-
 <!-- release-metadata:end -->
 - Installed command: `/usr/bin/tokensave`
 
-The release archives and matching upstream MIT license are pinned by SHA-256 in `PKGBUILD`. Runtime dependencies are `glibc` and `libgcc`.
+The release archives and matching upstream MIT license are pinned by SHA-256 in `PKGBUILD`; the updater additionally cross-checks the GitHub-reported asset digests against the upstream `SHA256SUMS`. Every change is validated in CI with `namcap`, dual-architecture builds, `shellcheck`, `flake8`, and a pinned [aurscan](https://github.com/manticore-projects/aurscan) security audit. Runtime dependencies are `glibc` and `libgcc`.
 
 ## Upstream
 

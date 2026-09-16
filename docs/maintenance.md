@@ -17,9 +17,13 @@ Do not replace fixed release URLs with a moving `latest` URL, and do not add sou
 
 ## Automated release updates
 
-The `update-release.yml` workflow checks the latest stable upstream release hourly and also accepts a
-`repository_dispatch` event of type `tokensave-release-published`. It validates the release archive,
-the upstream `SHA256SUMS` asset, and the tagged MIT license before updating:
+The `update-release.yml` workflow checks the latest stable upstream release three times a day
+(08:17, 14:17, and 20:17 UTC, covering the observed upstream release windows) and also accepts a
+`repository_dispatch` event of type `tokensave-release-published`. Scheduled runs exit early when the
+packaged version already matches upstream, so no runner time is spent on no-op checks; manual and
+dispatch triggers always run the full update. It validates the release archive bytes, the upstream
+`SHA256SUMS` asset, the GitHub-reported SHA-256 digest of each release asset (an independent
+integrity source that must agree with `SHA256SUMS`), and the tagged MIT license before updating:
 
 - `PKGBUILD` version and checksums;
 - generated `.SRCINFO`;
@@ -128,6 +132,12 @@ readelf -d "$root_arm/usr/bin/tokensave" | grep NEEDED
 ```
 
 The package must contain `/usr/bin/tokensave` and `/usr/share/licenses/tokensave-bin/LICENSE`. Do not use `makepkg -si` in automated checks.
+
+Package validation in `aur-package.yml` additionally runs `shellcheck` on `PKGBUILD`, `flake8` on the
+Python automation, and a pinned (version + SHA-256) [aurscan](https://github.com/manticore-projects/aurscan)
+static security audit of the repository on every relevant push and pull request. When bumping the pinned
+aurscan version, download the new `aurscan-linux-amd64` asset, record its SHA-256, and update both the
+URL and the checksum in the workflow together.
 
 The CI workflow pins the Arch base image by digest. Refresh that digest deliberately when updating the workflow, and review the resulting package-tool versions before committing the change.
 

@@ -8,6 +8,7 @@ from scripts.update_release import (
     parse_sha256sums,
     render_readme_metadata,
     render_package_command,
+    validate_asset_digest,
     validate_mit_license,
     validate_release_archive,
     update_pkgbuild_text,
@@ -136,6 +137,33 @@ sudo pacman -U tokensave-bin-7.13.0-1-aarch64.pkg.tar.zst
 <!-- package-file:end -->""",
         )
 
+    def test_validate_asset_digest_matches_sha256sums(self):
+        sha256 = "a" * 64
+        digests = {"tokensave-v7.13.0-x86_64-linux.tar.gz": f"sha256:{sha256}"}
+
+        validate_asset_digest(
+            digests, "tokensave-v7.13.0-x86_64-linux.tar.gz", sha256
+        )
+        validate_asset_digest(
+            {"tokensave-v7.13.0-x86_64-linux.tar.gz": f"sha256:{sha256.upper()}"},
+            "tokensave-v7.13.0-x86_64-linux.tar.gz",
+            sha256,
+        )
+        with self.assertRaises(ValueError):
+            validate_asset_digest(
+                digests, "tokensave-v7.13.0-x86_64-linux.tar.gz", "b" * 64
+            )
+        with self.assertRaises(ValueError):
+            validate_asset_digest(
+                {}, "tokensave-v7.13.0-x86_64-linux.tar.gz", sha256
+            )
+        with self.assertRaises(ValueError):
+            validate_asset_digest(
+                {"tokensave-v7.13.0-x86_64-linux.tar.gz": "md5:abc"},
+                "tokensave-v7.13.0-x86_64-linux.tar.gz",
+                sha256,
+            )
+
     def test_validate_mit_license_requires_mit_grant_text(self):
         validate_mit_license(
             b"MIT License\n\nPermission is hereby granted, free of charge, to any person."
@@ -153,7 +181,8 @@ sudo pacman -U tokensave-bin-7.13.0-1-aarch64.pkg.tar.zst
             "archive_sha256_aarch64": __import__("hashlib").sha256(archive_arm).hexdigest(),
         }
 
-        downloader = lambda url: archive_x86 if "x86" in url else archive_arm
+        def downloader(url):
+            return archive_x86 if "x86" in url else archive_arm
         validate_release_archive(release, downloader=downloader)
         with self.assertRaises(ValueError):
             validate_release_archive(

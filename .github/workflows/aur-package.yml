@@ -45,6 +45,19 @@ jobs:
           useradd --create-home --user-group builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
 
+      - name: Run static linters
+        run: |
+          pacman -S --noconfirm --needed shellcheck python-flake8
+          shellcheck -s bash -e SC2034,SC2154,SC2164 PKGBUILD
+          flake8 --max-line-length=120 scripts/ tests/
+
+      - name: Run security audit via aurscan
+        run: |
+          curl -fsSL https://github.com/manticore-projects/aurscan/releases/download/v0.9.1/aurscan-linux-amd64 -o /usr/local/bin/aurscan
+          echo "2edb094a0cc69a2bc20bc6a9e3d4c16969306e09507be112de285a0ac68d5b70  /usr/local/bin/aurscan" | sha256sum -c
+          chmod +x /usr/local/bin/aurscan
+          runuser -u builder -- aurscan --rules-only .
+
       - name: Validate shell syntax and generated metadata
         run: |
           runuser -u builder -- bash -c 'bash -n PKGBUILD'
