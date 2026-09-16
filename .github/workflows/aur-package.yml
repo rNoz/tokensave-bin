@@ -61,7 +61,7 @@ jobs:
         run: |
           runuser -u builder -- bash -s <<'EOF'
           set -e
-          package_glob='tokensave-bin-*.pkg.tar.*'
+          package_glob='tokensave-bin-[0-9]*.pkg.tar.*'
           binary_path='usr/bin/tokensave'
           license_path='usr/share/licenses/tokensave-bin/LICENSE'
           pkgfile=$(find . -maxdepth 1 -type f -name "$package_glob" -print -quit)
@@ -77,7 +77,7 @@ jobs:
         run: |
           runuser -u builder -- bash -s <<'EOF'
           set -e
-          package_glob='tokensave-bin-*.pkg.tar.*'
+          package_glob='tokensave-bin-[0-9]*.pkg.tar.*'
           pkgfile=$(find . -maxdepth 1 -type f -name "$package_glob" -print -quit)
           root=$(mktemp -d)
           trap 'rm -rf "$root"' EXIT
