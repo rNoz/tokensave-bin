@@ -1,0 +1,151 @@
+name: Publish merged release
+
+'on':
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version to republish, for example 7.13.0'
+        required: true
+        type: string
+      merge_sha:
+        description: 'Merged commit SHA that owns the release tag'
+        required: true
+        type: string
+      aur_only:
+        description: 'Repair AUR metadata from current main without changing a GitHub release'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: tokensave-bin-release-publication
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish package release
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner) ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       startsWith(github.event.pull_request.head.ref, 'automation/tokensave-v'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out merged main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.aur_only && 'main' || github.event_name == 'workflow_dispatch' && inputs.merge_sha || github.event.pull_request.merge_commit_sha }}
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Validate package release metadata
+        id: metadata
+        run: |
+          set -eu
+          version=$(sed -n 's/^pkgver=//p' PKGBUILD)
+          pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
+          if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::PKGBUILD has an invalid pkgver: $version"
+            exit 1
+          fi
+          if ! printf '%s\n' "$pkgrel" | grep -Eq '^[1-9][0-9]*$'; then
+            echo "::error::PKGBUILD has an invalid pkgrel: $pkgrel"
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] &&
+             [ "${{ inputs.aur_only }}" != "true" ] &&
+             [ "${{ inputs.version }}" != "$version" ]; then
+            echo "::error::Manual version does not match checked-out PKGBUILD."
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'pkgrel=%s\n' "$pkgrel" >> "$GITHUB_OUTPUT"
+          printf 'package_version=%s-%s\n' "$version" "$pkgrel" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        if: inputs.aur_only != true
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}
+          MERGE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.merge_sha || github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -eu
+          release_tag="v${PACKAGE_VERSION}"
+          release_asset="tokensave-bin-${PACKAGE_VERSION}.src.tar.gz"
+          release_notes="docs/releases/v${VERSION}.md"
+          test -f "$release_notes"
+          tar -czf "$release_asset" PKGBUILD .SRCINFO LICENSE README.md "$release_notes"
+
+          if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$release_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "TokenSave v${PACKAGE_VERSION}" \
+              --notes-file "$release_notes"
+            gh release upload "$release_tag" "$release_asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$release_tag" "$release_asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "TokenSave v${PACKAGE_VERSION}" \
+              --notes-file "$release_notes" \
+              --target "$MERGE_SHA"
+          fi
+
+      - name: Publish to AUR when configured
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+          AUR_USERNAME: ${{ secrets.AUR_USERNAME }}
+          AUR_EMAIL: ${{ secrets.AUR_EMAIL }}
+          AUR_PKG_NAME: ${{ vars.AUR_PKG_NAME || 'tokensave-bin' }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}
+        run: |
+          set -eu
+          if [ -z "$AUR_SSH_KEY" ]; then
+            echo "::notice::AUR_SSH_KEY is not configured; skipping AUR publication."
+            exit 0
+          fi
+          if [ -z "$AUR_USERNAME" ] || [ -z "$AUR_EMAIL" ]; then
+            echo "::error::AUR_USERNAME and AUR_EMAIL are required when AUR_SSH_KEY is configured."
+            exit 1
+          fi
+
+          payload=$(curl --fail --silent --show-error --retry 3 \
+            "https://aur.archlinux.org/rpc/v5/info/${AUR_PKG_NAME}")
+          if ! python3 -c \
+            'import json, sys; raise SystemExit(0 if json.load(sys.stdin).get("resultcount") == 1 else 1)' \
+            <<<"$payload"; then
+            echo "::error::AUR package ${AUR_PKG_NAME} does not exist; create it before enabling publication."
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.ssh"
+          key_file=$(mktemp "$HOME/.ssh/aur-key.XXXXXX")
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s\n' "$AUR_SSH_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          {
+            echo 'aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN'
+            echo 'aur.archlinux.org ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBLMiLrP8pVi5BFX2i3vepSUnpedeiewE5XptnUnau+ZoeUOPkpoCgZZuYfpaIQfhhJJI5qgnjJmr4hyJbe/zxow='
+          } >> "$HOME/.ssh/known_hosts"
+
+          export GIT_SSH_COMMAND="ssh -i $key_file -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          git clone "ssh://aur@aur.archlinux.org/${AUR_PKG_NAME}.git" /tmp/aur-repo
+          cp PKGBUILD .SRCINFO /tmp/aur-repo/
+          git -C /tmp/aur-repo config user.name "$AUR_USERNAME"
+          git -C /tmp/aur-repo config user.email "$AUR_EMAIL"
+          git -C /tmp/aur-repo add PKGBUILD .SRCINFO
+          if git -C /tmp/aur-repo diff --cached --quiet; then
+            echo "::notice::AUR metadata is already current."
+          else
+            git -C /tmp/aur-repo commit -m "Update to v${PACKAGE_VERSION}"
+            git -C /tmp/aur-repo push origin master
+          fi
