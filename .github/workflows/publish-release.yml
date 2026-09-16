@@ -11,7 +11,7 @@ name: Publish merged release
         required: true
         type: string
       merge_sha:
-        description: 'Merged commit SHA that owns the release tag'
+        description: 'Full 40-character merged commit SHA that owns the release tag'
         required: true
         type: string
       aur_only:
@@ -87,6 +87,7 @@ jobs:
             gh release edit "$release_tag" \
               --repo "$GITHUB_REPOSITORY" \
               --title "TokenSave v${PACKAGE_VERSION}" \
+              --target "$MERGE_SHA" \
               --notes-file "$release_notes"
             gh release upload "$release_tag" "$release_asset" \
               --repo "$GITHUB_REPOSITORY" \
