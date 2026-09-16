@@ -86,11 +86,15 @@ def validate_release_archive(
     *,
     downloader: Callable[[str], bytes] = fetch_bytes,
 ) -> None:
-    actual_checksum = hashlib.sha256(downloader(release["archive_url"])).hexdigest()
-    if actual_checksum != release["archive_sha256"]:
-        raise ValueError(
-            f"archive checksum mismatch: expected {release['archive_sha256']}, got {actual_checksum}"
-        )
+    for arch in ("x86_64", "aarch64"):
+        actual_checksum = hashlib.sha256(
+            downloader(release[f"archive_url_{arch}"])
+        ).hexdigest()
+        expected = release[f"archive_sha256_{arch}"]
+        if actual_checksum != expected:
+            raise ValueError(
+                f"{arch} archive checksum mismatch: expected {expected}, got {actual_checksum}"
+            )
 
 
 def release_from_github(tag: str | None = None) -> dict[str, str]:
@@ -105,7 +109,8 @@ def release_from_github(tag: str | None = None) -> dict[str, str]:
     if not isinstance(tag_name, str):
         raise RuntimeError("upstream release has no tag_name")
     version = normalize_version(tag_name)
-    expected_archive = f"tokensave-v{version}-x86_64-linux.tar.gz"
+    expected_archive_x86_64 = f"tokensave-v{version}-x86_64-linux.tar.gz"
+    expected_archive_aarch64 = f"tokensave-v{version}-aarch64-linux.tar.gz"
     assets = release.get("assets")
     if not isinstance(assets, list):
         raise RuntimeError("upstream release has no assets")
@@ -117,12 +122,17 @@ def release_from_github(tag: str | None = None) -> dict[str, str]:
             download_url = asset.get("browser_download_url")
             if isinstance(name, str) and isinstance(download_url, str):
                 asset_urls[name] = download_url
-    archive_url = asset_urls.get(expected_archive)
+    archive_url_x86_64 = asset_urls.get(expected_archive_x86_64)
+    archive_url_aarch64 = asset_urls.get(expected_archive_aarch64)
     sums_url = asset_urls.get("SHA256SUMS")
-    if not archive_url or not sums_url:
-        raise RuntimeError(f"release v{version} is missing {expected_archive} or SHA256SUMS")
+    if not archive_url_x86_64 or not archive_url_aarch64 or not sums_url:
+        raise RuntimeError(
+            f"release v{version} is missing {expected_archive_x86_64}, {expected_archive_aarch64}, or SHA256SUMS"
+        )
 
-    archive_sha256 = parse_sha256sums(fetch_bytes(sums_url).decode("utf-8"), expected_archive)
+    sums_text = fetch_bytes(sums_url).decode("utf-8")
+    archive_sha256_x86_64 = parse_sha256sums(sums_text, expected_archive_x86_64)
+    archive_sha256_aarch64 = parse_sha256sums(sums_text, expected_archive_aarch64)
     license_url = f"https://raw.githubusercontent.com/{UPSTREAM_REPOSITORY}/{tag_name}/LICENSE"
     license_contents = fetch_bytes(license_url)
     validate_mit_license(license_contents)
@@ -133,9 +143,12 @@ def release_from_github(tag: str | None = None) -> dict[str, str]:
     return {
         "version": version,
         "tag": tag_name,
-        "archive_name": expected_archive,
-        "archive_url": archive_url,
-        "archive_sha256": archive_sha256,
+        "archive_name_x86_64": expected_archive_x86_64,
+        "archive_name_aarch64": expected_archive_aarch64,
+        "archive_url_x86_64": archive_url_x86_64,
+        "archive_url_aarch64": archive_url_aarch64,
+        "archive_sha256_x86_64": archive_sha256_x86_64,
+        "archive_sha256_aarch64": archive_sha256_aarch64,
         "license_sha256": license_sha256,
         "release_url": release_url,
     }
@@ -145,10 +158,15 @@ def update_pkgbuild_text(
     contents: str,
     *,
     version: str,
-    archive_sha256: str,
+    archive_sha256_x86_64: str,
+    archive_sha256_aarch64: str,
     license_sha256: str,
 ) -> str:
-    if not SHA256_PATTERN.fullmatch(archive_sha256) or not SHA256_PATTERN.fullmatch(license_sha256):
+    if (
+        not SHA256_PATTERN.fullmatch(archive_sha256_x86_64)
+        or not SHA256_PATTERN.fullmatch(archive_sha256_aarch64)
+        or not SHA256_PATTERN.fullmatch(license_sha256)
+    ):
         raise ValueError("PKGBUILD checksums must be SHA-256 values")
     updated, version_count = re.subn(
         r"^pkgver=\S+$",
@@ -168,9 +186,25 @@ def update_pkgbuild_text(
     )
     if release_count != 1:
         raise ValueError("PKGBUILD must contain exactly one pkgrel assignment")
+    updated, count_x86_64 = re.subn(
+        r"(?ms)^sha256sums_x86_64=\(\n.*?^\)",
+        f"sha256sums_x86_64=(\n  '{archive_sha256_x86_64}'\n)",
+        updated,
+        count=1,
+    )
+    if count_x86_64 != 1:
+        raise ValueError("PKGBUILD must contain one sha256sums_x86_64 array")
+    updated, count_aarch64 = re.subn(
+        r"(?ms)^sha256sums_aarch64=\(\n.*?^\)",
+        f"sha256sums_aarch64=(\n  '{archive_sha256_aarch64}'\n)",
+        updated,
+        count=1,
+    )
+    if count_aarch64 != 1:
+        raise ValueError("PKGBUILD must contain one sha256sums_aarch64 array")
     updated, checksums_count = re.subn(
         r"(?ms)^sha256sums=\(\n.*?^\)",
-        f"sha256sums=(\n  '{archive_sha256}'\n  '{license_sha256}'\n)",
+        f"sha256sums=(\n  '{license_sha256}'\n)",
         updated,
         count=1,
     )
@@ -179,12 +213,18 @@ def update_pkgbuild_text(
     return updated
 
 
-def render_readme_metadata(*, version: str, archive_name: str, release_url: str) -> str:
+def render_readme_metadata(
+    *,
+    version: str,
+    archive_name_x86_64: str,
+    archive_name_aarch64: str,
+    release_url: str,
+) -> str:
     return "\n".join(
         [
             "<!-- release-metadata:start -->",
             f"- Packaged release: `v{version}`",
-            f"- Release archive: `{archive_name}`",
+            f"- Release archives: `{archive_name_x86_64}`, `{archive_name_aarch64}`",
             f"- Upstream release: <{release_url}>",
             "<!-- release-metadata:end -->",
         ]
@@ -196,7 +236,11 @@ def render_package_command(*, version: str) -> str:
         [
             "<!-- package-file:start -->",
             "```bash",
+            "# x86_64",
             f"sudo pacman -U tokensave-bin-{version}-1-x86_64.pkg.tar.zst",
+            "",
+            "# aarch64",
+            f"sudo pacman -U tokensave-bin-{version}-1-aarch64.pkg.tar.zst",
             "```",
             "<!-- package-file:end -->",
         ]
@@ -226,14 +270,12 @@ def update_repository(root: Path, release: dict[str, str]) -> bool:
     if not is_newer_version(release["version"], package_version(pkgbuild)):
         return False
     validate_release_archive(release)
-    pkgbuild_path.write_text(
-        update_pkgbuild_text(
-            pkgbuild,
-            version=release["version"],
-            archive_sha256=release["archive_sha256"],
-            license_sha256=release["license_sha256"],
-        ),
-        encoding="utf-8",
+    updated_pkgbuild = update_pkgbuild_text(
+        pkgbuild,
+        version=release["version"],
+        archive_sha256_x86_64=release["archive_sha256_x86_64"],
+        archive_sha256_aarch64=release["archive_sha256_aarch64"],
+        license_sha256=release["license_sha256"],
     )
 
     readme_path = root / "README.md"
@@ -244,7 +286,8 @@ def update_repository(root: Path, release: dict[str, str]) -> bool:
         "<!-- release-metadata:end -->",
         render_readme_metadata(
             version=release["version"],
-            archive_name=release["archive_name"],
+            archive_name_x86_64=release["archive_name_x86_64"],
+            archive_name_aarch64=release["archive_name_aarch64"],
             release_url=release["release_url"],
         ),
     )
@@ -254,6 +297,8 @@ def update_repository(root: Path, release: dict[str, str]) -> bool:
         "<!-- package-file:end -->",
         render_package_command(version=release["version"]),
     )
+
+    pkgbuild_path.write_text(updated_pkgbuild, encoding="utf-8")
     readme_path.write_text(readme, encoding="utf-8")
 
     return True

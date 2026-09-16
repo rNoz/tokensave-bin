@@ -52,36 +52,61 @@ jobs:
             'makepkg --printsrcinfo | diff -u .SRCINFO -'
           runuser -u builder -- python3 -m unittest discover -s tests -v
 
-      - name: Verify sources and build package
+      - name: Verify sources and build packages
         run: |
           runuser -u builder -- makepkg --verifysource --force
           runuser -u builder -- makepkg --cleanbuild --clean --force
+          sed 's/CARCH=.*/CARCH="aarch64"/; s/CHOST=.*/CHOST="aarch64-unknown-linux-gnu"/' /etc/makepkg.conf > /tmp/makepkg-aarch64.conf
+          grep -q '^CARCH="aarch64"' /tmp/makepkg-aarch64.conf
+          runuser -u builder -- makepkg --config /tmp/makepkg-aarch64.conf --verifysource --force
+          runuser -u builder -- makepkg --config /tmp/makepkg-aarch64.conf --cleanbuild --clean --force
 
-      - name: Inspect package without installation
+      - name: Inspect packages without installation
         run: |
           runuser -u builder -- bash -s <<'EOF'
           set -e
-          package_glob='tokensave-bin-[0-9]*.pkg.tar.*'
           binary_path='usr/bin/tokensave'
           license_path='usr/share/licenses/tokensave-bin/LICENSE'
-          pkgfile=$(find . -maxdepth 1 -type f -name "$package_glob" -print -quit)
-          test -n "$pkgfile"
-          namcap PKGBUILD "$pkgfile"
-          bsdtar -tf "$pkgfile" | grep -Fx "$binary_path"
-          bsdtar -tf "$pkgfile" | grep -Fx "$license_path"
-          pacman -Qp --info "$pkgfile"
+
+          x86_pkgfile=$(find . -maxdepth 1 -type f -name 'tokensave-bin-*-x86_64.pkg.tar.*' -print -quit)
+          test -n "$x86_pkgfile"
+          namcap PKGBUILD "$x86_pkgfile"
+          bsdtar -tf "$x86_pkgfile" | grep -Fx "$binary_path"
+          bsdtar -tf "$x86_pkgfile" | grep -Fx "$license_path"
+          pacman -Qp --info "$x86_pkgfile"
+
+          aarch64_pkgfile=$(find . -maxdepth 1 -type f -name 'tokensave-bin-*-aarch64.pkg.tar.*' -print -quit)
+          test -n "$aarch64_pkgfile"
+          namcap PKGBUILD "$aarch64_pkgfile"
+          bsdtar -tf "$aarch64_pkgfile" | grep -Fx "$binary_path"
+          bsdtar -tf "$aarch64_pkgfile" | grep -Fx "$license_path"
+          pacman -Qp --info "$aarch64_pkgfile"
           EOF
 
-      - name: Smoke-test upstream executable on trusted events
+      - name: Inspect aarch64 ELF binary
+        run: |
+          runuser -u builder -- bash -s <<'EOF'
+          set -e
+          aarch64_pkgfile=$(find . -maxdepth 1 -type f -name 'tokensave-bin-*-aarch64.pkg.tar.*' -print -quit)
+          test -n "$aarch64_pkgfile"
+          root=$(mktemp -d)
+          trap 'rm -rf "$root"' EXIT
+          bsdtar -xf "$aarch64_pkgfile" -C "$root"
+          readelf -h "$root/usr/bin/tokensave" | grep -E 'Class:\s+ELF64'
+          readelf -h "$root/usr/bin/tokensave" | grep -E 'Machine:\s+AArch64'
+          readelf -d "$root/usr/bin/tokensave" | grep NEEDED
+          EOF
+
+      - name: Smoke-test upstream x86_64 executable on trusted events
         if: github.event_name != 'pull_request'
         run: |
           runuser -u builder -- bash -s <<'EOF'
           set -e
-          package_glob='tokensave-bin-[0-9]*.pkg.tar.*'
-          pkgfile=$(find . -maxdepth 1 -type f -name "$package_glob" -print -quit)
+          x86_pkgfile=$(find . -maxdepth 1 -type f -name 'tokensave-bin-*-x86_64.pkg.tar.*' -print -quit)
+          test -n "$x86_pkgfile"
           root=$(mktemp -d)
           trap 'rm -rf "$root"' EXIT
-          bsdtar -xf "$pkgfile" -C "$root"
+          bsdtar -xf "$x86_pkgfile" -C "$root"
           expected_version=$(sed -n 's/^pkgver=//p' PKGBUILD)
           "$root/usr/bin/tokensave" --version | grep -Fx "tokensave $expected_version"
           "$root/usr/bin/tokensave" --help >/dev/null

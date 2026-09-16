@@ -3,24 +3,27 @@
 [![Package CI](https://github.com/rNoz/tokensave-bin/actions/workflows/aur-package.yml/badge.svg)](https://github.com/rNoz/tokensave-bin/actions/workflows/aur-package.yml)
 [![Release automation](https://github.com/rNoz/tokensave-bin/actions/workflows/publish-release.yml/badge.svg)](https://github.com/rNoz/tokensave-bin/actions/workflows/publish-release.yml)
 [![AUR package](https://img.shields.io/aur/version/tokensave-bin.svg?logo=archlinux)](https://aur.archlinux.org/packages/tokensave-bin)
+[![Upstream release](https://img.shields.io/github/v/release/aovestdipaperino/tokensave?label=upstream%20release)](https://github.com/aovestdipaperino/tokensave/releases/latest)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20%2B%20MIT-blue.svg)](LICENSE)
+[![Arch](https://img.shields.io/badge/arch-x86__64%20%7C%20aarch64-informational)](#installation)
 
-Reproducible Arch Linux package metadata for the prebuilt **TokenSave** command-line tool. The package reuses the upstream x86_64 Linux release rather than compiling Rust source code.
+Reproducible Arch Linux package metadata for the prebuilt **TokenSave** command-line tool. The package reuses the upstream x86_64 and aarch64 Linux releases rather than compiling Rust source code.
 
 ## Package
 
 <!-- release-metadata:start -->
 - Packaged release: `v7.12.1`
-- Release archive: `tokensave-v7.12.1-x86_64-linux.tar.gz`
+- Release archives: `tokensave-v7.12.1-x86_64-linux.tar.gz`, `tokensave-v7.12.1-aarch64-linux.tar.gz`
 - Upstream release: <https://github.com/aovestdipaperino/tokensave/releases/tag/v7.12.1>
 <!-- release-metadata:end -->
 - Installed command: `/usr/bin/tokensave`
 
-The release archive and matching upstream MIT license are pinned by SHA-256 in `PKGBUILD`. Runtime dependencies are `glibc` and `libgcc`.
+The release archives and matching upstream MIT license are pinned by SHA-256 in `PKGBUILD`. Runtime dependencies are `glibc` and `libgcc`.
 
 ## Upstream
 
 TokenSave is maintained at <https://github.com/aovestdipaperino/tokensave>. This repository packages
-its prebuilt x86_64 Linux release without compiling or modifying the upstream executable.
+its prebuilt x86_64 and aarch64 Linux releases without compiling or modifying the upstream executable.
 
 ## Installation
 
@@ -42,7 +45,11 @@ Install an already-built package directly:
 
 <!-- package-file:start -->
 ```bash
+# x86_64
 sudo pacman -U tokensave-bin-7.12.1-1-x86_64.pkg.tar.zst
+
+# aarch64
+sudo pacman -U tokensave-bin-7.12.1-1-aarch64.pkg.tar.zst
 ```
 <!-- package-file:end -->
 
@@ -51,10 +58,22 @@ sudo pacman -U tokensave-bin-7.12.1-1-x86_64.pkg.tar.zst
 The package can be built without installing it:
 
 ```bash
+# Verify PKGBUILD syntax and .SRCINFO
+bash -n PKGBUILD
+makepkg --printsrcinfo | diff -u .SRCINFO -
+
+# Verify and build x86_64
 makepkg --verifysource --force
 makepkg --cleanbuild --clean --force
-pkgfile=$(find . -maxdepth 1 -type f -name 'tokensave-bin-*.pkg.tar.*' -print -quit)
-namcap PKGBUILD "$pkgfile"
+
+# Verify and build aarch64
+sed 's/CARCH=.*/CARCH="aarch64"/; s/CHOST=.*/CHOST="aarch64-unknown-linux-gnu"/' /etc/makepkg.conf > /tmp/makepkg-aarch64.conf
+grep -q '^CARCH="aarch64"' /tmp/makepkg-aarch64.conf
+makepkg --config /tmp/makepkg-aarch64.conf --verifysource --force
+makepkg --config /tmp/makepkg-aarch64.conf --cleanbuild --clean --force
+
+# Inspect packages
+namcap PKGBUILD tokensave-bin-*-x86_64.pkg.tar.zst tokensave-bin-*-aarch64.pkg.tar.zst
 ```
 
 The package contents are intentionally small:

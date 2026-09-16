@@ -4,9 +4,9 @@
 
 1. Check the upstream TokenSave releases at <https://github.com/aovestdipaperino/tokensave/releases>.
 2. Set `pkgver` in `PKGBUILD` to the release number without the leading `v`.
-3. Update the release archive URL if the upstream filename changes.
-4. Obtain the matching archive and `LICENSE` SHA-256 values from the upstream release/tag.
-5. Update both entries in `sha256sums`.
+3. Update the release archive URLs if the upstream filenames change.
+4. Obtain the matching archive and `LICENSE` SHA-256 values from the upstream release/tag (`SHA256SUMS`).
+5. Update `sha256sums_x86_64`, `sha256sums_aarch64`, and license `sha256sums`.
 6. Regenerate `.SRCINFO`:
 
    ```bash
@@ -51,8 +51,7 @@ downgrade or regeneration mode.
 
 ## Private repository and publication configuration
 
-The private GitHub repository follows the relevant factory-repository practices without copying its
-project-specific patching or test tasks:
+The repository automation manages GitHub releases and optional AUR publication:
 
 - `publish-release.yml` creates or refreshes a private GitHub release after a merged
   `automation/tokensave-vX.Y.Z` pull request;
@@ -82,24 +81,50 @@ is merged or an owner manually dispatches publication.
 Run these commands from the repository root:
 
 ```bash
+# Verify PKGBUILD syntax and .SRCINFO
 bash -n PKGBUILD
 makepkg --printsrcinfo | diff -u .SRCINFO -
+
+# Run Python unit tests
+python3 -m unittest discover -s tests -v
+
+# Verify and build x86_64 package
 makepkg --verifysource --force
 makepkg --cleanbuild --clean --force
-namcap PKGBUILD
+
+# Verify and build aarch64 package
+sed 's/CARCH=.*/CARCH="aarch64"/; s/CHOST=.*/CHOST="aarch64-unknown-linux-gnu"/' /etc/makepkg.conf > /tmp/makepkg-aarch64.conf
+grep -q '^CARCH="aarch64"' /tmp/makepkg-aarch64.conf
+makepkg --config /tmp/makepkg-aarch64.conf --verifysource --force
+makepkg --config /tmp/makepkg-aarch64.conf --cleanbuild --clean --force
+
+# Inspect both packages with namcap
+namcap PKGBUILD tokensave-bin-*-x86_64.pkg.tar.zst tokensave-bin-*-aarch64.pkg.tar.zst
 ```
 
-Inspect the resulting package without installing it:
+Inspect the resulting packages without installing them:
 
 ```bash
-pkgfile=$(find . -maxdepth 1 -type f -name 'tokensave-bin-*.pkg.tar.*' -print -quit)
-bsdtar -tf "$pkgfile"
-pacman -Qp --info "$pkgfile"
+# Inspect x86_64 package and smoke-test executable
+x86_pkgfile=$(find . -maxdepth 1 -type f -name 'tokensave-bin-*-x86_64.pkg.tar.*' -print -quit)
+bsdtar -tf "$x86_pkgfile"
+pacman -Qp --info "$x86_pkgfile"
 root=$(mktemp -d)
 trap 'rm -rf "$root"' EXIT
-bsdtar -xf "$pkgfile" -C "$root"
+bsdtar -xf "$x86_pkgfile" -C "$root"
 "$root/usr/bin/tokensave" --version
 "$root/usr/bin/tokensave" --help >/dev/null
+
+# Inspect aarch64 package metadata and ELF headers
+aarch64_pkgfile=$(find . -maxdepth 1 -type f -name 'tokensave-bin-*-aarch64.pkg.tar.*' -print -quit)
+bsdtar -tf "$aarch64_pkgfile"
+pacman -Qp --info "$aarch64_pkgfile"
+root_arm=$(mktemp -d)
+trap 'rm -rf "$root_arm"' EXIT
+bsdtar -xf "$aarch64_pkgfile" -C "$root_arm"
+readelf -h "$root_arm/usr/bin/tokensave" | grep -E 'Class:\s+ELF64'
+readelf -h "$root_arm/usr/bin/tokensave" | grep -E 'Machine:\s+AArch64'
+readelf -d "$root_arm/usr/bin/tokensave" | grep NEEDED
 ```
 
 The package must contain `/usr/bin/tokensave` and `/usr/share/licenses/tokensave-bin/LICENSE`. Do not use `makepkg -si` in automated checks.

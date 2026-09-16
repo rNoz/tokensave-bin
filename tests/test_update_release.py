@@ -34,9 +34,15 @@ class UpdateReleaseTests(unittest.TestCase):
                 fetch_bytes("https://api.github.com/repos/example/project"),
                 b"response",
             )
+            request = urlopen.call_args.args[0]
+            self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
 
-        request = urlopen.call_args.args[0]
-        self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
+            self.assertEqual(
+                fetch_bytes("https://raw.githubusercontent.com/example/project/LICENSE"),
+                b"response",
+            )
+            non_api_request = urlopen.call_args.args[0]
+            self.assertFalse(non_api_request.has_header("Authorization"))
 
     def test_parse_sha256sums_selects_the_named_archive(self):
         sums = """\
@@ -53,12 +59,22 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  tokensave-v7.1
         original = """\
 pkgver=7.12.1
 pkgrel=7
+source_x86_64=(
+  "https://example.invalid/v$pkgver/tokensave-v$pkgver-x86_64-linux.tar.gz"
+)
+sha256sums_x86_64=(
+  'old-x86-archive'
+)
+source_aarch64=(
+  "https://example.invalid/v$pkgver/tokensave-v$pkgver-aarch64-linux.tar.gz"
+)
+sha256sums_aarch64=(
+  'old-aarch64-archive'
+)
 source=(
-  "https://example.invalid/v$pkgver/tokensave-v$pkgver-$CARCH-linux.tar.gz"
   "tokensave-license-$pkgver::https://example.invalid/v$pkgver/LICENSE"
 )
 sha256sums=(
-  'old-archive'
   'old-license'
 )
 """
@@ -66,17 +82,21 @@ sha256sums=(
         updated = update_pkgbuild_text(
             original,
             version="7.13.0",
-            archive_sha256="1" * 64,
-            license_sha256="2" * 64,
+            archive_sha256_x86_64="1" * 64,
+            archive_sha256_aarch64="2" * 64,
+            license_sha256="3" * 64,
         )
 
         self.assertIn("pkgver=7.13.0", updated)
         self.assertIn("pkgrel=1", updated)
         self.assertIn(f"  '{'1' * 64}'", updated)
         self.assertIn(f"  '{'2' * 64}'", updated)
-        self.assertNotIn("old-archive", updated)
+        self.assertIn(f"  '{'3' * 64}'", updated)
+        self.assertNotIn("old-x86-archive", updated)
+        self.assertNotIn("old-aarch64-archive", updated)
         self.assertNotIn("old-license", updated)
-        self.assertIn("tokensave-v$pkgver-$CARCH-linux.tar.gz", updated)
+        self.assertIn("tokensave-v$pkgver-x86_64-linux.tar.gz", updated)
+        self.assertIn("tokensave-v$pkgver-aarch64-linux.tar.gz", updated)
 
     def test_only_a_newer_upstream_version_is_an_update(self):
         self.assertTrue(is_newer_version("7.13.0", "7.12.1"))
@@ -86,7 +106,8 @@ sha256sums=(
     def test_render_readme_metadata_is_deterministic(self):
         rendered = render_readme_metadata(
             version="7.13.0",
-            archive_name="tokensave-v7.13.0-x86_64-linux.tar.gz",
+            archive_name_x86_64="tokensave-v7.13.0-x86_64-linux.tar.gz",
+            archive_name_aarch64="tokensave-v7.13.0-aarch64-linux.tar.gz",
             release_url="https://github.com/aovestdipaperino/tokensave/releases/tag/v7.13.0",
         )
 
@@ -95,7 +116,7 @@ sha256sums=(
             """\
 <!-- release-metadata:start -->
 - Packaged release: `v7.13.0`
-- Release archive: `tokensave-v7.13.0-x86_64-linux.tar.gz`
+- Release archives: `tokensave-v7.13.0-x86_64-linux.tar.gz`, `tokensave-v7.13.0-aarch64-linux.tar.gz`
 - Upstream release: <https://github.com/aovestdipaperino/tokensave/releases/tag/v7.13.0>
 <!-- release-metadata:end -->""",
         )
@@ -106,7 +127,11 @@ sha256sums=(
             """\
 <!-- package-file:start -->
 ```bash
+# x86_64
 sudo pacman -U tokensave-bin-7.13.0-1-x86_64.pkg.tar.zst
+
+# aarch64
+sudo pacman -U tokensave-bin-7.13.0-1-aarch64.pkg.tar.zst
 ```
 <!-- package-file:end -->""",
         )
@@ -119,17 +144,21 @@ sudo pacman -U tokensave-bin-7.13.0-1-x86_64.pkg.tar.zst
             validate_mit_license(b"Apache License")
 
     def test_validate_release_archive_checks_downloaded_bytes(self):
-        archive = b"release archive"
+        archive_x86 = b"x86 archive"
+        archive_arm = b"arm archive"
         release = {
-            "archive_url": "https://example.invalid/archive.tar.gz",
-            "archive_sha256": __import__("hashlib").sha256(archive).hexdigest(),
+            "archive_url_x86_64": "https://example.invalid/archive-x86.tar.gz",
+            "archive_sha256_x86_64": __import__("hashlib").sha256(archive_x86).hexdigest(),
+            "archive_url_aarch64": "https://example.invalid/archive-arm.tar.gz",
+            "archive_sha256_aarch64": __import__("hashlib").sha256(archive_arm).hexdigest(),
         }
 
-        validate_release_archive(release, downloader=lambda _: archive)
+        downloader = lambda url: archive_x86 if "x86" in url else archive_arm
+        validate_release_archive(release, downloader=downloader)
         with self.assertRaises(ValueError):
             validate_release_archive(
-                {**release, "archive_sha256": "0" * 64},
-                downloader=lambda _: archive,
+                {**release, "archive_sha256_aarch64": "0" * 64},
+                downloader=downloader,
             )
 
 
