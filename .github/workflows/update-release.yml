@@ -2,9 +2,9 @@ name: Update upstream release
 
 on:
   schedule:
-    # Three checks per day (08:17, 14:17, 20:17 UTC), covering the observed
-    # upstream release windows (mostly 07:00-17:00 UTC, occasional evenings).
-    - cron: '17 8,14,20 * * *'
+    # Upstream releases are polled every four hours; direct upstream events
+    # are unavailable because the release repository is unrelated.
+    - cron: '0 */4 * * *'
   repository_dispatch:
     types:
       - tokensave-release-published
@@ -16,7 +16,6 @@ on:
         type: string
 
 permissions:
-  actions: write
   contents: write
   pull-requests: write
 
@@ -30,16 +29,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Require release automation token
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::RELEASE_TOKEN is required for release automation."
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+          token: ${{ secrets.RELEASE_TOKEN }}
           persist-credentials: true
 
       - name: Check for upstream changes
         id: upstream
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           DISPATCH_TAG: ${{ github.event.client_payload.tag }}
           MANUAL_TAG: ${{ inputs.tag }}
           EVENT_NAME: ${{ github.event_name }}
@@ -63,8 +72,8 @@ jobs:
       - name: Update release metadata
         if: steps.upstream.outputs.should_update == 'true'
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           DISPATCH_TAG: ${{ github.event.client_payload.tag }}
           MANUAL_TAG: ${{ inputs.tag }}
         run: |
@@ -114,8 +123,7 @@ jobs:
       - name: Create or update release pull request
         if: steps.upstream.outputs.should_update == 'true' && steps.changes.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
-          RELEASE_TOKEN_CONFIGURED: ${{ secrets.RELEASE_TOKEN != '' }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           VERSION: ${{ steps.changes.outputs.version }}
         run: |
           set -eu
@@ -150,8 +158,7 @@ jobs:
           else
             printf 'Updated existing pull request: %s\n' "$existing"
           fi
-          if [ "$RELEASE_TOKEN_CONFIGURED" = "true" ]; then
-            echo "::notice::Package validation will run from the release-token branch push."
-          elif ! gh workflow run aur-package.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"; then
-            echo "::warning::Could not dispatch package validation for $branch; the pull request remains open for manual validation."
+          if ! gh pr merge "$existing" --auto --squash --delete-branch; then
+            echo "::error::Could not enable CI-gated auto-merge."
+            exit 1
           fi

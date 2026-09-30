@@ -17,9 +17,8 @@ Do not replace fixed release URLs with a moving `latest` URL, and do not add sou
 
 ## Automated release updates
 
-The `update-release.yml` workflow checks the latest stable upstream release three times a day
-(08:17, 14:17, and 20:17 UTC, covering the observed upstream release windows) and also accepts a
-`repository_dispatch` event of type `tokensave-release-published`. Scheduled runs exit early when the
+The `update-release.yml` workflow checks the latest stable upstream release every four hours and also
+accepts a `repository_dispatch` event of type `tokensave-release-published`. Scheduled runs exit early when the
 packaged version already matches upstream, so no runner time is spent on no-op checks; manual and
 dispatch triggers always run the full update. It validates the release archive bytes, the upstream
 `SHA256SUMS` asset, the GitHub-reported SHA-256 digest of each release asset (an independent
@@ -29,14 +28,14 @@ integrity source that must agree with `SHA256SUMS`), and the tagged MIT license 
 - generated `.SRCINFO`;
 - the marked current-release and package-file sections in `README.md`.
 
-The workflow opens a pull request instead of committing directly to the default branch. Package validation
-runs on that pull request, so a maintainer reviews the complete package metadata change before merging it.
-The publish workflow fetches the matching upstream release notes at publication time and stores them in
-the GitHub release; release-note copies are intentionally not committed to this package repository.
+The workflow opens or updates a pull request instead of committing directly to `main`, then queues
+squash auto-merge. The `main` ruleset requires the `Build and smoke-test package` check and prevents
+direct or force pushes; the bot merges only after that check passes. The publish workflow fetches the
+matching upstream release notes at publication time and stores them in the GitHub release; release-note
+copies are intentionally not committed to this package repository.
 
-When `RELEASE_TOKEN` is configured, the workflow uses it for the release branch and pull request so ordinary
-push and pull-request checks run normally. Without that secret, it falls back to the repository token and
-explicitly dispatches package validation for the generated branch.
+`RELEASE_TOKEN` is required for release updates so branch pushes trigger normal pull-request checks and
+the merged event starts the publisher. The workflow fails before preparing an update if this secret is missing.
 
 GitHub cannot deliver a release event from the unrelated upstream repository directly to this repository.
 The scheduled check is therefore the self-contained fallback. An upstream workflow or GitHub App can
@@ -53,24 +52,23 @@ makepkg --printsrcinfo > .SRCINFO
 The updater intentionally ignores the current and older versions; it does not provide a forced
 downgrade or regeneration mode.
 
-## Private repository and publication configuration
+## Repository protection and publication configuration
 
-The repository automation manages GitHub releases and optional AUR publication:
+The public repository automation manages GitHub releases and AUR publication:
 
-- `publish-release.yml` creates or refreshes a private GitHub release after a merged
+- `publish-release.yml` creates or refreshes a GitHub release after a merged
   `automation/tokensave-vX.Y.Z` pull request;
-- AUR publication is optional and is skipped until `AUR_SSH_KEY` is configured;
-- when enabled, the workflow publishes only `PKGBUILD` and `.SRCINFO` to the existing `tokensave-bin`
-  AUR package, or initializes the first package submission, and verifies the pinned AUR host keys.
+- the publisher requires its AUR credentials and publishes only `PKGBUILD` and `.SRCINFO` to the
+  `tokensave-bin` AUR package, or initializes the first package submission, using pinned AUR host keys.
 
 Configure these repository secrets only through GitHub's secret storage:
 
 | Secret or variable | Purpose |
 | --- | --- |
-| `RELEASE_TOKEN` | GitHub token used for release branches/PRs and publication; the workflow falls back to the scoped `GITHUB_TOKEN` when testing without this secret. |
-| `AUR_SSH_KEY` | Optional private SSH key already authorized for the AUR account. |
-| `AUR_USERNAME` | AUR commit author name, required with `AUR_SSH_KEY`. |
-| `AUR_EMAIL` | AUR commit author email, required with `AUR_SSH_KEY`. |
+| `RELEASE_TOKEN` | GitHub token for release branches/PRs and publication; required to trigger CI and the post-merge workflow. |
+| `AUR_SSH_KEY` | Private SSH key authorized for the AUR account; required for publication. |
+| `AUR_USERNAME` | AUR commit author name; required for publication. |
+| `AUR_EMAIL` | AUR commit author email; required for publication. |
 | `AUR_PKG_NAME` | Repository variable for the AUR package name; defaults to `tokensave-bin`. |
 
 The AUR private key is never stored in this repository or printed by CI. The first publication creates
@@ -78,7 +76,8 @@ the package repository; later publications clone and update it.
 
 The workflows never use secrets for pull-request validation. Package validation has read-only repository
 permissions, while release and AUR publication run only after a same-repository automation pull request
-is merged or an owner manually dispatches publication.
+is merged or an owner manually dispatches publication. Missing publication credentials fail the workflow
+before the GitHub release is created rather than silently skipping the AUR update.
 
 ## Required local checks
 
