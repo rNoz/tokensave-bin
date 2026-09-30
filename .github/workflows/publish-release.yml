@@ -37,11 +37,36 @@ jobs:
        startsWith(github.event.pull_request.head.ref, 'automation/tokensave-v'))
     runs-on: ubuntu-latest
     steps:
+      - name: Validate publication credentials
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+          AUR_USERNAME: ${{ secrets.AUR_USERNAME }}
+          AUR_EMAIL: ${{ secrets.AUR_EMAIL }}
+          AUR_PKG_NAME: ${{ vars.AUR_PKG_NAME || 'tokensave-bin' }}
+        run: |
+          set -eu
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::RELEASE_TOKEN is required to publish release metadata."
+            exit 1
+          fi
+          if [ -z "$AUR_SSH_KEY" ] ||
+             [ -z "$AUR_USERNAME" ] ||
+             [ -z "$AUR_EMAIL" ]; then
+            echo "::error::AUR credentials are required for release publication."
+            exit 1
+          fi
+          if ! printf '%s\n' "$AUR_PKG_NAME" |
+             grep -Eq '^[a-z0-9][a-z0-9@._+-]*$'; then
+            echo "::error::AUR_PKG_NAME contains invalid characters."
+            exit 1
+          fi
+
       - name: Check out merged main
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.aur_only && 'main' || github.event_name == 'workflow_dispatch' && inputs.merge_sha || github.event.pull_request.merge_commit_sha }}
-          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+          token: ${{ secrets.RELEASE_TOKEN }}
           persist-credentials: false
 
       - name: Validate package release metadata
@@ -71,7 +96,7 @@ jobs:
       - name: Publish GitHub release
         if: inputs.aur_only != true
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           VERSION: ${{ steps.metadata.outputs.version }}
           PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}
           MERGE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.merge_sha || github.event.pull_request.merge_commit_sha }}
@@ -120,7 +145,7 @@ jobs:
               --target "$MERGE_SHA"
           fi
 
-      - name: Publish to AUR when configured
+      - name: Publish to AUR
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
           AUR_USERNAME: ${{ secrets.AUR_USERNAME }}
@@ -130,18 +155,6 @@ jobs:
           PACKAGE_VERSION: ${{ steps.metadata.outputs.package_version }}
         run: |
           set -eu
-          if [ -z "$AUR_SSH_KEY" ]; then
-            echo "::notice::AUR_SSH_KEY is not configured; skipping AUR publication."
-            exit 0
-          fi
-          if [ -z "$AUR_USERNAME" ] || [ -z "$AUR_EMAIL" ]; then
-            echo "::error::AUR_USERNAME and AUR_EMAIL are required when AUR_SSH_KEY is configured."
-            exit 1
-          fi
-          if ! printf '%s\n' "$AUR_PKG_NAME" | grep -Eq '^[a-z0-9][a-z0-9@._+-]*$'; then
-            echo "::error::AUR_PKG_NAME contains invalid characters."
-            exit 1
-          fi
 
           payload=$(curl --fail --silent --show-error --retry 3 \
             "https://aur.archlinux.org/rpc/v5/info/${AUR_PKG_NAME}")
