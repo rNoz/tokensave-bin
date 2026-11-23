@@ -18,9 +18,9 @@ Reproducible Arch Linux package metadata for the prebuilt **TokenSave** command-
 ## Package
 
 <!-- release-metadata:start -->
-- Packaged release: `v7.17.2`
-- Release archives: `tokensave-v7.17.2-x86_64-linux.tar.gz`, `tokensave-v7.17.2-aarch64-linux.tar.gz`
-- Upstream release: <https://github.com/aovestdipaperino/tokensave/releases/tag/v7.17.2>
+- Packaged release: `v7.17.3`
+- Release archives: `tokensave-v7.17.3-x86_64-linux.tar.gz`, `tokensave-v7.17.3-aarch64-linux.tar.gz`
+- Upstream release: <https://github.com/aovestdipaperino/tokensave/releases/tag/v7.17.3>
 <!-- release-metadata:end -->
 - Installed command: `/usr/bin/tokensave`
 
@@ -52,10 +52,10 @@ Install an already-built package directly:
 <!-- package-file:start -->
 ```bash
 # x86_64
-sudo pacman -U tokensave-bin-7.17.2-1-x86_64.pkg.tar.zst
+sudo pacman -U tokensave-bin-7.17.3-1-x86_64.pkg.tar.zst
 
 # aarch64
-sudo pacman -U tokensave-bin-7.17.2-1-aarch64.pkg.tar.zst
+sudo pacman -U tokensave-bin-7.17.3-1-aarch64.pkg.tar.zst
 ```
 <!-- package-file:end -->
 
